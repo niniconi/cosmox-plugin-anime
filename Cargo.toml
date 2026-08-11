@@ -1,0 +1,34 @@
+[package]
+name = "cosmox-plugin-anime"
+version = "0.0.1"
+edition = "2024"
+license = "GPL"
+authors = ["niniconi"]
+description = "Base anime plugin for cosmox. Handles local metadata tree reconstruction (pre-scrape) without network calls."
+
+[package.metadata]
+dependencies = []
+conflicts = []
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["plugin"]
+plugin = []
+
+[dependencies]
+cosmox-api = { git = "https://github.com/niniconi/cosmox.git", branch = "dev", package = "cosmox-api" }
+serde = { version = "1.0.219", features = ["derive", "rc"] }
+serde_json = "1.0.140"
+regex = "1.12.2"
+lazy-regex = "3.4.2"
+bincode = "2.0.1"
+log = "0.4.29"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
