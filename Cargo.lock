@@ -71,7 +71,6 @@ dependencies = [
 name = "cosmox-plugin-anime"
 version = "0.0.1"
 dependencies = [
- "bincode",
  "cosmox-api",
  "lazy-regex",
  "log",
