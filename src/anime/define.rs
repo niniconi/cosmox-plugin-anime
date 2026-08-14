@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt, ops::Deref, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use cosmox_api::api::MetadataExtend;
+use cosmox_api::extend::MetadataExtend;
 
 // Newtype wrappers that give complex field types `Display`/`FromStr`, so the
 // `MetadataExtend` derive can serialize them into flat `extend` string values
