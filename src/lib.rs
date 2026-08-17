@@ -27,10 +27,10 @@ mod anime_plugin {
     fn handle_metadata_ready(
         _data: OnMetadataRawTreeReadyEventContext,
         metadata_view: MetadataView,
-        _path_mapping_view: PathMappingView,
+        path_mapping_view: PathMappingView,
     ) -> host_notifier::PluginResult {
         log::info!("metadata raw tree ready, rebuilding tree structure");
-        super::anime::action::rebuild_metadata_tree(metadata_view);
+        super::anime::action::rebuild_metadata_tree(metadata_view, path_mapping_view);
         host_notifier::PluginResult::Ok
     }
 

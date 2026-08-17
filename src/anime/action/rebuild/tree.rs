@@ -1,12 +1,26 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use cosmox_api::api::bindings::cosmox::plugin::context::MetadataQuery;
-use cosmox_api::handle::MetadataView;
+use cosmox_api::handle::{MetadataView, PathMappingView};
 use cosmox_api::metadata::MetadataType;
 
 use crate::anime::action::matcher::{ExtraKind, extra_bucket_name, extra_kind_str};
 use crate::anime::action::rebuild::model::{ExtraItem, ParsedFile, ParsedSeries};
 use crate::anime::define::Episode;
+
+/// Read the node's `file:` url and push it into `data_file_map_id`, so the
+/// host can resolve the file through path_mapping.
+fn push_data_file(view: MetadataView, path_mapping: &PathMappingView, id: u64) {
+    let Some(meta) = view.query::<()>(&MetadataQuery::Id(id)) else {
+        return;
+    };
+    if meta.url.is_empty() {
+        return;
+    }
+    if let Err(err) = path_mapping.push(id, "data_file_map_id", &meta.url) {
+        log::warn!("push data file mapping for {id} failed: {err:?}");
+    }
+}
 
 /// Write the parsed season/episode numbers into the node's `extend` map.
 fn annotate_file(view: MetadataView, id: u64, season: Option<u32>, episode: Option<u32>) {
@@ -53,23 +67,35 @@ fn same_bucket_name(dir_name: &str, bucket: &str) -> bool {
     a.trim_end_matches('s') == b.trim_end_matches('s')
 }
 
-fn move_extra_file(view: MetadataView, parent: &MetadataQuery, file: &ParsedFile) {
+fn move_extra_file(
+    view: MetadataView,
+    path_mapping: &PathMappingView,
+    parent: &MetadataQuery,
+    file: &ParsedFile,
+) {
     view.move_node(&MetadataQuery::Id(file.id), parent);
     if let Some(extra) = &file.extra {
-        annotate_extra(view, file.id, extra, file.season);
+        annotate_extra(view.clone(), file.id, extra, file.season);
     }
+    push_data_file(view, path_mapping, file.id);
 }
 
 /// Rebuild one extra directory under `key`, preserving its original
 /// hierarchy: children keep their names, files stay put when their kind
 /// matches the directory's, otherwise they are grouped into kind buckets.
-fn rebuild_extra_dir(view: MetadataView, key: &MetadataQuery, series: &ParsedSeries, idx: usize) {
+fn rebuild_extra_dir(
+    view: MetadataView,
+    path_mapping: &PathMappingView,
+    key: &MetadataQuery,
+    series: &ParsedSeries,
+    idx: usize,
+) {
     let dir = &series.extra_dirs[idx];
     for file in &dir.files {
         if let Some(extra) = &file.extra
             && extra.kind == dir.kind
         {
-            move_extra_file(view.clone(), key, file);
+            move_extra_file(view.clone(), path_mapping, key, file);
         }
     }
     let mut buckets: BTreeMap<ExtraKind, Vec<&ParsedFile>> = BTreeMap::new();
@@ -89,7 +115,7 @@ fn rebuild_extra_dir(view: MetadataView, key: &MetadataQuery, series: &ParsedSer
         };
         annotate_extra_dir(view.clone(), &bucket_key, kind);
         for file in files {
-            move_extra_file(view.clone(), &bucket_key, file);
+            move_extra_file(view.clone(), path_mapping, &bucket_key, file);
         }
     }
     for &child in &dir.children {
@@ -101,7 +127,7 @@ fn rebuild_extra_dir(view: MetadataView, key: &MetadataQuery, series: &ParsedSer
             continue;
         };
         annotate_extra_dir(view.clone(), &child_key, child_dir.kind);
-        rebuild_extra_dir(view.clone(), &child_key, series, child);
+        rebuild_extra_dir(view.clone(), path_mapping, &child_key, series, child);
     }
 }
 
@@ -110,6 +136,7 @@ fn rebuild_extra_dir(view: MetadataView, key: &MetadataQuery, series: &ParsedSer
 /// flattened so `Scans/` keeps the shape the release shipped with.
 fn rebuild_extras(
     view: MetadataView,
+    path_mapping: &PathMappingView,
     parent: &MetadataQuery,
     series: &ParsedSeries,
     roots: &[usize],
@@ -137,12 +164,12 @@ fn rebuild_extras(
         };
         annotate_extra_dir(view.clone(), &bucket_key, kind);
         for file in files {
-            move_extra_file(view.clone(), &bucket_key, file);
+            move_extra_file(view.clone(), path_mapping, &bucket_key, file);
         }
         for idx in dirs {
             let dir = &series.extra_dirs[idx];
             if same_bucket_name(&dir.name, extra_bucket_name(kind)) {
-                rebuild_extra_dir(view.clone(), &bucket_key, series, idx);
+                rebuild_extra_dir(view.clone(), path_mapping, &bucket_key, series, idx);
             } else {
                 let Some(dir_key) = view
                     .create_node(&bucket_key, &dir.name, MetadataType::Virtual)
@@ -151,7 +178,7 @@ fn rebuild_extras(
                     continue;
                 };
                 annotate_extra_dir(view.clone(), &dir_key, dir.kind);
-                rebuild_extra_dir(view.clone(), &dir_key, series, idx);
+                rebuild_extra_dir(view.clone(), path_mapping, &dir_key, series, idx);
             }
         }
     }
@@ -178,6 +205,7 @@ fn collect_extra_ids(series: &ParsedSeries, roots: &[usize], out: &mut Vec<u64>)
 /// 5. delete every raw directory node (deepest first).
 pub(crate) fn rebuild_series(
     view: MetadataView,
+    path_mapping: &PathMappingView,
     root_query: &MetadataQuery,
     series: &ParsedSeries,
 ) {
@@ -226,6 +254,7 @@ pub(crate) fn rebuild_series(
             for f in &bucket.episodes {
                 view.move_node(&MetadataQuery::Id(f.id), &season_key);
                 annotate_file(view.clone(), f.id, Some(season_num), f.episode);
+                push_data_file(view.clone(), path_mapping, f.id);
             }
             if !bucket.unknown.is_empty()
                 && let Some(unknown_key) = view
@@ -235,6 +264,7 @@ pub(crate) fn rebuild_series(
                 for f in &bucket.unknown {
                     view.move_node(&MetadataQuery::Id(f.id), &unknown_key);
                     annotate_file(view.clone(), f.id, Some(season_num), f.episode);
+                    push_data_file(view.clone(), path_mapping, f.id);
                 }
             }
         }
@@ -249,7 +279,7 @@ pub(crate) fn rebuild_series(
                 .create_node(&season_key, "extras", MetadataType::Virtual)
                 .map(MetadataQuery::Id)
         {
-            rebuild_extras(view.clone(), &extras_key, series, &roots, &loose);
+            rebuild_extras(view.clone(), path_mapping, &extras_key, series, &roots, &loose);
             collect_extra_ids(series, &roots, &mut extra_dir_ids);
         }
     }
@@ -260,7 +290,7 @@ pub(crate) fn rebuild_series(
             .map(MetadataQuery::Id)
     {
         let loose: Vec<&ParsedFile> = series.loose_extras.iter().collect();
-        rebuild_extras(view.clone(), &extras_key, series, &series_roots, &loose);
+        rebuild_extras(view.clone(), path_mapping, &extras_key, series, &series_roots, &loose);
         collect_extra_ids(series, &series_roots, &mut extra_dir_ids);
     }
 
@@ -272,6 +302,7 @@ pub(crate) fn rebuild_series(
         for f in &series.unknown {
             view.move_node(&MetadataQuery::Id(f.id), &unknown_key);
             annotate_file(view.clone(), f.id, f.season, f.episode);
+            push_data_file(view.clone(), path_mapping, f.id);
         }
     }
 

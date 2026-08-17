@@ -4,7 +4,7 @@ pub(crate) mod tree;
 pub(crate) mod walk;
 
 use cosmox_api::api::bindings::cosmox::plugin::context::MetadataQuery;
-use cosmox_api::handle::MetadataView;
+use cosmox_api::handle::{MetadataView, PathMappingView};
 use cosmox_api::metadata::MetadataType;
 
 use crate::anime::action::rebuild::tree::rebuild_series;
@@ -15,7 +15,10 @@ use crate::anime::action::rebuild::walk::{merge_series, parse_series};
 /// Phase 1 parses all top-level nodes read-only. Phase 2 merges same-title
 /// series, moves unplaceable top-level files under `unknown`, rebuilds each
 /// series, and deletes orphaned virtual shells from previous runs.
-pub fn rebuild_metadata_tree(view: MetadataView) {
+///
+/// Every file node that survives the rebuild is pushed into `path_mapping`
+/// (`data_file_map_id`), since the host leaves the mapping empty by default.
+pub fn rebuild_metadata_tree(view: MetadataView, path_mapping: PathMappingView) {
     let root_query = MetadataQuery::Id(0);
     let roots = view.children(&root_query);
     log::info!("rebuild metadata tree: {} root nodes", roots.len());
@@ -55,7 +58,7 @@ pub fn rebuild_metadata_tree(view: MetadataView) {
         }
     }
     for series in &series_list {
-        rebuild_series(view.clone(), &root_query, series);
+        rebuild_series(view.clone(), &path_mapping, &root_query, series);
     }
     for rid in orphan_virtuals {
         view.delete(&MetadataQuery::Id(rid));
