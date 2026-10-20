@@ -46,7 +46,7 @@ checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 [[package]]
 name = "cosmox-api"
 version = "0.0.1"
-source = "git+https://github.com/niniconi/cosmox.git?branch=dev#45cd86eba6ec36b6885818ec2a68b1d30632eada"
+source = "git+https://github.com/niniconi/cosmox.git?branch=dev#7e3cbbfb5b62c649e9f2a0f5e1d19a59f9544064"
 dependencies = [
  "anyhow",
  "bincode",
@@ -60,7 +60,7 @@ dependencies = [
 [[package]]
 name = "cosmox-macros"
 version = "0.0.1"
-source = "git+https://github.com/niniconi/cosmox.git?branch=dev#45cd86eba6ec36b6885818ec2a68b1d30632eada"
+source = "git+https://github.com/niniconi/cosmox.git?branch=dev#7e3cbbfb5b62c649e9f2a0f5e1d19a59f9544064"
 dependencies = [
  "proc-macro2",
  "quote",
